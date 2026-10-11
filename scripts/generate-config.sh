@@ -11,9 +11,8 @@ CFG=scripts/config
 $CFG --set-str LOCALVERSION "-custom"
 $CFG --disable LOCALVERSION_AUTO
 
-# CPU: AMD Zen 4 (Ryzen 7 7840HS)
-$CFG --disable GENERIC_CPU
-$CFG --enable MNATIVE_AMD
+# CPU: no Zen-specific option exists upstream (MZEN4/MNATIVE_AMD are not in
+# mainline); the kernel keeps the default -march=x86-64 -mtune=generic.
 
 # NAS: NFS server (v4) and SMB/CIFS client+server
 $CFG --module NFSD
@@ -29,8 +28,7 @@ $CFG --set-str DEFAULT_TCP_CONG bbr
 # Wi-Fi 6 AX200 (iwlwifi + mvm) and USB4 / Thunderbolt
 $CFG --module IWLWIFI
 $CFG --module IWLMVM
-$CFG --module USB4
-$CFG --module THUNDERBOLT
+$CFG --module USB4          # includes Thunderbolt (no separate THUNDERBOLT symbol)
 
 # Drivers/filesystems that must exist even if they were not loaded when
 # config/lsmod.txt was captured (localmodconfig drops anything not in that list).
