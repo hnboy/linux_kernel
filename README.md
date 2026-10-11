@@ -1,92 +1,33 @@
-# Custom Linux Kernel Builder
+# Custom Linux Kernel (Arch Linux)
 
-为 AMD Ryzen 7 7840HS + NAS + 远程开发场景定制的 Linux 内核，通过 GitHub Actions 自动编译。
+GitHub Actions 在 `archlinux:base-devel` 容器中用 `makepkg` 编译最新 stable 内核，
+产出 `linux-custom` 和 `linux-custom-headers` 两个 `.pkg.tar.zst` 包。
 
-## 硬件配置
+目标机器：AMD Ryzen 7 7840HS / Radeon 780M / RTL8125 2.5GbE / AX200 / USB4，作为远程开发 + NAS 使用。
 
-| 组件 | 型号 |
-|------|------|
-| CPU | AMD Ryzen 7 7840HS (Zen 4, 8C/16T) |
-| GPU | AMD Radeon 780M |
-| 内存 | 28GB DDR5 |
-| 存储 | Micron 2550 1TB + ZHITAI Ti600 4TB (NVMe) |
-| 网卡 | Realtek RTL8125 2.5GbE |
-| Wi-Fi | Intel AX200 (Wi-Fi 6) |
-| 其他 | USB4/Thunderbolt |
+## 构建
 
-## 内核优化
+Actions 页面 → **Build Custom Kernel** → **Run workflow**，可填版本号（如 `7.2.9`），留空则取 kernel.org 最新 stable。
+每周日 03:00 UTC 也会自动构建。产物在 Actions artifact 和 Release 中。
 
-- **CPU**: `CONFIG_MNATIVE_AMD` — Zen 4 原生调度优化
-- **GPU**: `CONFIG_DRM_AMDGPU=y` — Radeon 780M 集成
-- **存储**: NVMe 优化，ext4/XFS，NFS 服务器
-- **网络**: 2.5GbE (RTL8125)，BBR 拥塞控制，Tailscale VPN
-- **容器**: Docker 完整支持 (cgroup v2, overlayfs, bridge)
-- **文件系统**: ext4, Btrfs, NFS, CIFS, XFS
+## 安装
 
-## 使用方式
-
-### 1. 构建
-
-#### 手动触发
-1. 进入 GitHub 仓库 Actions 页面
-2. 选择 "Build Custom Kernel"
-3. 点击 "Run workflow"
-4. 可选输入特定版本号（如 `7.2.9`），留空则使用最新 stable
-
-#### 自动构建
-每周日凌晨 3:00 自动检查并构建最新 stable 版本
-
-### 2. 安装
-
-从 Release 下载两个包：
 ```bash
-wget https://github.com/yourusername/kernel/releases/download/v7.2.9/linux-custom-7.2.9-1-x86_64.tar.zst
-wget https://github.com/yourusername/kernel/releases/download/v7.2.9/linux-custom-headers-7.2.9-1-x86_64.tar.zst
-```
-
-运行安装脚本：
-```bash
-chmod +x scripts/install.sh
-sudo ./scripts/install.sh linux-custom-7.2.9-1-x86_64.tar.zst linux-custom-headers-7.2.9-1-x86_64.tar.zst
-```
-
-或手动安装：
-```bash
-sudo pacman -U linux-custom-7.2.9-1-x86_64.tar.zst
-sudo pacman -U linux-custom-headers-7.2.9-1-x86_64.tar.zst
-sudo mkinitcpio -p linux-custom
+mkdir -p ~/kernel-pkgs && cd ~/kernel-pkgs
+# 下载 Release 中的两个 .pkg.tar.zst，然后：
+sudo /path/to/kernel/scripts/install.sh ~/kernel-pkgs
 sudo reboot
 ```
 
-### 3. Fallback
+脚本会：备份 `/boot/loader`、`pacman -U` 安装、生成 initramfs、基于 linux-lts 的启动项创建 `arch-custom.conf` 并设为默认。
 
-如果新内核有问题：
+## 回退
 
-1. **启动菜单选择**: 开机时在 systemd-boot 菜单选择 `linux-lts` 条目
-2. **命令行回退**:
-   ```bash
-   sudo kernel-install remove 7.2.9-1-custom
-   sudo mkinitcpio -p linux-lts
-   sudo reboot
-   ```
+- 开机时在 systemd-boot 菜单选择 `linux-lts` 启动项（原内核未被删除）。
+- 永久回退：`sudo bootctl set-default <lts-entry>.conf`，或把 `/boot/loader/loader.conf` 恢复为备份。
+- 卸载新内核：`sudo pacman -R linux-custom-headers linux-custom`。
 
-## 仓库结构
+## 配置
 
-```
-kernel/
-├── .github/workflows/kernel-build.yml   # GitHub Actions 工作流
-├── scripts/
-│   ├── generate-config.sh               # 配置生成
-│   ├── build-kernel.sh                  # 编译打包
-│   └── install.sh                       # 本地安装脚本
-├── config/
-│   └── base.config                      # 从 /proc/config.gz 提取的基础配置
-├── PKGBUILD.kernel                      # 内核包 PKGBUILD
-├── PKGBUILD.headers                     # 头文件包 PKGBUILD
-├── README.md
-└── .gitignore
-```
-
-## License
-
-GPL-2.0 (same as Linux kernel)
+- `config/base.config`：当前机器的运行配置（6.18 LTS 导出）。
+- `scripts/generate-config.sh`：在 `olddefconfig` 之后做的针对性修改（Zen 4、NFSD/CIFS、BBR、AX200、USB4）。

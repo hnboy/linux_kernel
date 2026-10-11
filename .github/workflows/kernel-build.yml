@@ -4,18 +4,18 @@ on:
   workflow_dispatch:
     inputs:
       kernel_version:
-        description: 'Specific kernel version (e.g. 7.2.9, leave empty for latest stable)'
+        description: 'Kernel version, e.g. 7.2.9 (empty = latest stable)'
         required: false
         default: ''
       upload_release:
-        description: 'Upload as GitHub Release'
+        description: 'Publish a GitHub Release'
         type: boolean
         default: true
   schedule:
     - cron: '0 3 * * 0'
 
-env:
-  KERNEL_REPO: https://cdn.kernel.org/pub/linux/kernel
+permissions:
+  contents: write
 
 jobs:
   get-version:
@@ -23,16 +23,19 @@ jobs:
     outputs:
       version: ${{ steps.version.outputs.version }}
     steps:
-      - name: Determine kernel version
+      - name: Resolve kernel version
         id: version
+        env:
+          INPUT_VERSION: ${{ github.event.inputs.kernel_version }}
         run: |
-          if [ -n "${{ github.event.inputs.kernel_version }}" ]; then
-            echo "version=${{ github.event.inputs.kernel_version }}" >> $GITHUB_OUTPUT
+          if [ -n "$INPUT_VERSION" ]; then
+            VERSION="$INPUT_VERSION"
           else
-            VERSION=$(curl -s https://www.kernel.org/releases.json | \
-              jq -r '.releases[] | select(.moniker == "stable") | .version' | head -1)
-            echo "version=$VERSION" >> $GITHUB_OUTPUT
+            VERSION=$(curl -fsSL https://www.kernel.org/releases.json \
+              | jq -r '[.releases[] | select(.moniker == "stable")][0].version')
           fi
+          echo "Kernel version: $VERSION"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
   build:
     needs: get-version
@@ -42,82 +45,53 @@ jobs:
     env:
       KVER: ${{ needs.get-version.outputs.version }}
     steps:
-      - name: Initialize Arch Linux
+      - name: Install build tools
         run: |
-          cat > /etc/pacman.conf << 'PACMAN_EOF'
-          [core]
-          Include = /etc/pacman.d/mirrorlist
-          [extra]
-          Include = /etc/pacman.d/mirrorlist
-          [community]
-          Include = /etc/pacman.d/mirrorlist
-          PACMAN_EOF
           pacman-key --init
           pacman-key --populate archlinux
           pacman -Syu --noconfirm
-
-      - name: Install build dependencies
-        run: |
-          pacman -S --noconfirm \
-            base-devel bc bison flex git gcc cpio kmod \
-            libelf openssl pahole python rsync tar xz zstd \
-            ncurses systemd jq curl wget fakeroot \
-            pacman-contrib inetutils
+          pacman -S --noconfirm --needed git bc bison flex cpio kmod libelf \
+            ncurses openssl pahole perl python rsync tar xz zstd
 
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Download and extract kernel source
+      - name: Prepare build directory
         run: |
-          mkdir -p /output
-          cd /tmp
-          wget -q "${KERNEL_REPO}/v${KVER%%.*}.x/linux-${KVER}.tar.xz"
-          echo "Extracting linux-${KVER}.tar.xz..."
-          tar xf "linux-${KVER}.tar.xz"
-          mv "linux-${KVER}" /kernel
+          sed -i "s/^pkgver=.*/pkgver=${KVER}/" PKGBUILD
+          grep '^pkgver=' PKGBUILD
+          useradd -m builder
+          cp -a "$GITHUB_WORKSPACE" /home/builder/kernel
+          chown -R builder:builder /home/builder/kernel
 
-      - name: Generate kernel config
+      - name: Build packages with makepkg
         run: |
-          cd /kernel
-          cp $GITHUB_WORKSPACE/config/base.config .config
-          make olddefconfig
-          bash $GITHUB_WORKSPACE/scripts/generate-config.sh
+          runuser -u builder -- bash -c 'cd /home/builder/kernel && makepkg --noconfirm --nodeps'
 
-      - name: Build kernel packages
+      - name: Collect packages
         run: |
-          cd /kernel
-          bash $GITHUB_WORKSPACE/scripts/build-kernel.sh
+          mkdir -p output
+          cp /home/builder/kernel/*.pkg.tar.zst output/
+          ls -lh output/
+          test "$(ls output/*.pkg.tar.zst | wc -l)" -eq 2
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: kernel-${KVER}
-          path: /output/*
+          name: linux-custom-${{ env.KVER }}
+          path: output/*.pkg.tar.zst
           retention-days: 30
 
-      - name: Create GitHub Release
-        if: github.event.inputs.upload_release != 'false'
+      - name: Publish GitHub Release
+        if: ${{ github.event.inputs.upload_release != 'false' }}
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${KVER}
-          name: "Custom Kernel ${KVER}"
+          tag_name: v${{ env.KVER }}
+          name: Custom Kernel ${{ env.KVER }}
+          files: output/*.pkg.tar.zst
           body: |
-            Custom Arch Linux kernel ${KVER} built for:
-            - AMD Ryzen 7 7840HS (Zen 4)
-            - AMD Radeon 780M
-            - Realtek RTL8125 2.5GbE
-            - Intel Wi-Fi 6 AX200
-            - USB4/Thunderbolt
-            - NFS/CIFS NAS support
-            - Docker/container support
+            Custom Arch Linux kernel ${{ env.KVER }} (linux-custom + linux-custom-headers).
 
-            ## Installation
-            ```bash
-            sudo pacman -U linux-custom-${KVER}-1-x86_64.pkg.tar.zst
-            sudo pacman -U linux-custom-headers-${KVER}-1-x86_64.pkg.tar.zst
+            Install with scripts/install.sh, or manually:
+            sudo pacman -U linux-custom-${{ env.KVER }}-1-x86_64.pkg.tar.zst linux-custom-headers-${{ env.KVER }}-1-x86_64.pkg.tar.zst
             sudo mkinitcpio -p linux-custom
-            sudo reboot
-            ```
-          files: /output/*
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
