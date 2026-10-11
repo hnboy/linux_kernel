@@ -2,7 +2,7 @@
 # Apply hardware / use-case tweaks to the kernel .config.
 # Run from the kernel source root after `make olddefconfig`.
 # Only touches options that matter for this machine; everything else
-# (KALLSYMS, BTF, KPROBES, FTRACE, PREEMPT, HZ, ...) keeps the base.config value.
+# (KALLSYMS, KPROBES, FTRACE, PREEMPT, HZ, ...) keeps the base.config value.
 set -euo pipefail
 
 CFG=scripts/config
@@ -19,6 +19,7 @@ $CFG --enable MNATIVE_AMD
 $CFG --module NFSD
 $CFG --enable NFSD_V4
 $CFG --module CIFS
+$CFG --enable CIFS_XATTR     # CIFS_POSIX depends on it; localmodconfig drops it
 $CFG --enable CIFS_POSIX
 
 # Network: BBR as default congestion control (built-in so it is the default)
@@ -30,6 +31,27 @@ $CFG --module IWLWIFI
 $CFG --module IWLMVM
 $CFG --module USB4
 $CFG --module THUNDERBOLT
+
+# Drivers/filesystems that must exist even if they were not loaded when
+# config/lsmod.txt was captured (localmodconfig drops anything not in that list).
+$CFG --module R8169          # RTL8125 2.5GbE
+$CFG --module NVME_CORE
+$CFG --module BLK_DEV_NVME
+$CFG --module EXT4_FS
+$CFG --module BTRFS_FS
+$CFG --module XFS_FS
+
+# Build speed: no debug info / BTF, no Rust (no Rust drivers are enabled)
+# DEBUG_INFO is derived from the "Debug information" choice: clear every
+# DWARF member (base.config has DWARF5=y) and select NONE explicitly.
+$CFG --disable DEBUG_INFO_DWARF_TOOLCHAIN_DEFAULT
+$CFG --disable DEBUG_INFO_DWARF4
+$CFG --disable DEBUG_INFO_DWARF5
+$CFG --disable DEBUG_INFO_REDUCED
+$CFG --enable DEBUG_INFO_NONE
+$CFG --disable DEBUG_INFO_BTF
+$CFG --disable DEBUG_INFO_BTF_MODULES
+$CFG --disable RUST
 
 # Normalise dependent choices after the edits above
 make olddefconfig

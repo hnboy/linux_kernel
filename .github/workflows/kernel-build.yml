@@ -55,8 +55,8 @@ jobs:
           pacman-key --init
           pacman-key --populate archlinux
           pacman -Syu --noconfirm
-          pacman -S --noconfirm --needed git bc bison flex cpio kmod libelf \
-            ncurses openssl pahole perl python rsync tar xz zstd
+          pacman -S --noconfirm --needed git bc bison ccache flex cpio kmod libelf \
+            ncurses openssl perl python rsync tar xz zstd
 
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -67,7 +67,26 @@ jobs:
           grep '^pkgver=' PKGBUILD
           useradd -m builder
           cp -a "$GITHUB_WORKSPACE" /home/builder/kernel
-          chown -R builder:builder /home/builder/kernel
+
+      - name: Restore kernel source tarball cache
+        uses: actions/cache@v4
+        with:
+          path: /home/builder/kernel/linux-${{ env.KVER }}.tar.xz
+          key: kernel-src-${{ env.KVER }}
+
+      - name: Restore ccache
+        uses: actions/cache@v4
+        with:
+          path: /home/builder/.ccache
+          key: ccache-${{ env.KVER }}-${{ github.run_id }}
+          restore-keys: |
+            ccache-${{ env.KVER }}-
+            ccache-
+
+      - name: Fix ownership
+        run: |
+          mkdir -p /home/builder/.ccache
+          chown -R builder:builder /home/builder/kernel /home/builder/.ccache
 
       - name: Build packages with makepkg
         run: |

@@ -12,8 +12,8 @@ pkgdesc='Custom Linux kernel tuned for Ryzen 7840HS, NAS and remote development'
 url='https://www.kernel.org/'
 arch=('x86_64')
 license=('GPL-2.0-only')
-makedepends=('bc' 'bison' 'cpio' 'flex' 'kmod' 'libelf' 'ncurses' 'openssl'
-             'pahole' 'perl' 'python' 'rsync' 'tar' 'xz' 'zstd')
+makedepends=('bc' 'bison' 'ccache' 'cpio' 'flex' 'kmod' 'libelf' 'ncurses' 'openssl'
+             'perl' 'python' 'rsync' 'tar' 'xz' 'zstd')
 options=('!debug' '!strip')
 source=("https://cdn.kernel.org/pub/linux/kernel/v${pkgver%%.*}.x/linux-${pkgver}.tar.xz")
 sha256sums=('SKIP')
@@ -21,14 +21,21 @@ sha256sums=('SKIP')
 build() {
   cd "linux-${pkgver}"
 
+  # Compiler cache (CI restores/saves CCACHE_DIR between runs)
+  export PATH="/usr/lib/ccache/bin:${PATH}"
+  export CCACHE_DIR="${CCACHE_DIR:-${HOME}/.ccache}"
+
   # Start from the target machine's running config (6.18 LTS), upgrade to this version
   cp "${startdir}/config/base.config" .config
   make olddefconfig
 
-  # Hardware / use-case tweaks
+  # Keep only modules that were loaded on the target machine (config/lsmod.txt)
+  make LSMOD="${startdir}/config/lsmod.txt" localmodconfig
+
+  # Hardware / use-case tweaks (also re-enables must-have modules and disables debug info/Rust)
   bash "${startdir}/scripts/generate-config.sh"
 
-  make bzImage modules
+  make -j"$(nproc)" bzImage modules
 }
 
 package_linux-custom() {
@@ -43,7 +50,7 @@ package_linux-custom() {
 
   install -Dm644 "$(make -s image_name)" "${pkgdir}/boot/vmlinuz-linux-custom"
 
-  make INSTALL_MOD_PATH="${pkgdir}/usr" modules_install
+  make -j"$(nproc)" INSTALL_MOD_PATH="${pkgdir}/usr" modules_install
   rm -f "${pkgdir}/usr/lib/modules/${kver}/build" "${pkgdir}/usr/lib/modules/${kver}/source"
 
   install -d "${pkgdir}/etc/mkinitcpio.d"

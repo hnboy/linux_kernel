@@ -30,4 +30,27 @@ sudo reboot
 ## 配置
 
 - `config/base.config`：当前机器的运行配置（6.18 LTS 导出）。
-- `scripts/generate-config.sh`：在 `olddefconfig` 之后做的针对性修改（Zen 4、NFSD/CIFS、BBR、AX200、USB4）。
+- `config/lsmod.txt`：目标机器 `lsmod` 输出。构建时通过 `make localmodconfig` 只保留这些模块（约 6000 个模块降到约 200 个），以缩短编译时间。
+- `scripts/generate-config.sh`：在裁剪之后做的针对性修改（Zen 4、NFSD/CIFS、BBR、AX200、USB4、必需驱动，并关闭 DEBUG_INFO/BTF 和 Rust）。
+
+构建顺序：`base.config` → `olddefconfig` → `localmodconfig`（读 `lsmod.txt`）→ `generate-config.sh` → `olddefconfig`。
+
+### 更新 lsmod.txt
+
+在目标机器上、所有日常使用的硬件和文件系统都已工作的状态下采集：
+
+```bash
+lsmod > config/lsmod.txt
+```
+
+### 裁剪后缺驱动怎么办
+
+如果某个硬件或文件系统在新内核上不工作，原因通常是采集 `lsmod.txt` 时它没有加载。处理方式：
+
+1. 在目标机器上插入/挂载该设备后，重新执行 `lsmod > config/lsmod.txt` 并提交；或
+2. 在 `scripts/generate-config.sh` 中用 `$CFG --module <SYMBOL>` 强制启用该驱动。
+
+### 已知限制
+
+- 关闭了 DEBUG_INFO 和 BTF：`bpftrace`、CO-RE 的 eBPF 程序、`crash`、`perf` 的符号解析等工具将无法使用。
+- Rust 支持已关闭，当前配置中没有 Rust 驱动。
