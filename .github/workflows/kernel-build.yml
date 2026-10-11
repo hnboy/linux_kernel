@@ -29,10 +29,15 @@ jobs:
           INPUT_VERSION: ${{ github.event.inputs.kernel_version }}
         run: |
           if [ -n "$INPUT_VERSION" ]; then
-            VERSION="$INPUT_VERSION"
+            VERSION=$(echo "$INPUT_VERSION" | tr -d '[:space:]')
           else
             VERSION=$(curl -fsSL https://www.kernel.org/releases.json \
               | jq -r '[.releases[] | select(.moniker == "stable")][0].version')
+          fi
+          # makepkg pkgver allows only [0-9.] here; reject anything else early
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+(\.[0-9]+)?$ ]]; then
+            echo "::error::Invalid kernel version '$VERSION'. Use the form 7.2.9 (no -suffix)."
+            exit 1
           fi
           echo "Kernel version: $VERSION"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
