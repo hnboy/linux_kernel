@@ -29,12 +29,19 @@ $CFG --set-str DEFAULT_TCP_CONG bbr
 $CFG --module IWLWIFI
 $CFG --module IWLMVM
 $CFG --module USB4          # includes Thunderbolt (no separate THUNDERBOLT symbol)
+$CFG --module USB4_NET      # thunderbolt-net: Mac <-> Linux networking over TB4 cable
 
 # Drivers/filesystems that must exist even if they were not loaded when
 # config/lsmod.txt was captured (localmodconfig drops anything not in that list).
 $CFG --module R8169          # RTL8125 2.5GbE
-$CFG --module NVME_CORE
+$CFG --module NVME_CORE      # external NVMe SSD enclosure
 $CFG --module BLK_DEV_NVME
+$CFG --module USB_STORAGE    # USB-bridged SSD enclosures
+$CFG --module USB_UAS
+$CFG --module USB_NET_DRIVERS   # parent menu; localmodconfig drops it, children need it
+$CFG --module USB_USBNET     # USB network adapters
+$CFG --module USB_RTL8152
+$CFG --module USB_NET_CDC_NCM
 $CFG --module EXT4_FS
 $CFG --module BTRFS_FS
 $CFG --module XFS_FS
