@@ -21,9 +21,15 @@ $CFG --module CIFS
 $CFG --enable CIFS_XATTR     # CIFS_POSIX depends on it; localmodconfig drops it
 $CFG --enable CIFS_POSIX
 
-# Network: BBR as default congestion control (built-in so it is the default)
+# Network: BBR congestion control, built-in and selected as the default.
+# DEFAULT_TCP_CONG / DEFAULT_NET_SCH are derived from choice members, so the
+# choice member must be enabled; --set-str on the derived string is ignored.
 $CFG --enable TCP_CONG_BBR
-$CFG --set-str DEFAULT_TCP_CONG bbr
+$CFG --enable DEFAULT_BBR
+
+# Network: fq qdisc as default (pairs with BBR pacing), built-in.
+$CFG --enable NET_SCH_FQ
+$CFG --enable DEFAULT_FQ
 
 # Wi-Fi 6 AX200 (iwlwifi + mvm) and USB4 / Thunderbolt
 $CFG --module IWLWIFI
