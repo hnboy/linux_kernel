@@ -1,0 +1,37 @@
+# Maintainer: Custom Kernel Builder
+pkgname=linux-custom
+pkgver=7.2.9
+pkgrel=1
+pkgdesc="Custom Linux kernel for AMD Ryzen 7 7840HS with NAS and remote development optimizations"
+arch=('x86_64')
+url="https://github.com/yourusername/kernel"
+license=('GPL2')
+depends=('coreutils' 'kmod' 'mkinitcpio')
+optdepends=('linux-firmware: firmware files for wireless devices'
+            'ucode-amd: microcode update image for AMD CPUs')
+
+backup=('etc/mkinitcpio.d/linux-custom.preset')
+
+_pkgver="${pkgver}-${pkgrel}"
+
+package() {
+    _kernver="${pkgver}"
+
+    cd "${srcdir}/linux-${pkgver}"
+
+    echo "Installing kernel image..."
+    install -Dm644 "$(make -s image_name)" "${pkgdir}/boot/vmlinuz-linux-custom"
+
+    echo "Installing modules..."
+    make INSTALL_MOD_PATH="${pkgdir}/usr" modules_install
+
+    echo "Installing firmware..."
+    make INSTALL_MOD_PATH="${pkgdir}/usr" firmware_install
+
+    echo "Installing headers..."
+    make INSTALL_HDR_PATH="${pkgdir}/usr/lib/modules/${_kernver}/build" headers_install
+
+    install -Dm644 .config "${pkgdir}/usr/share/doc/linux-custom/config"
+    install -Dm644 Makefile "${pkgdir}/usr/share/doc/linux-custom/Makefile"
+    install -Dm644 Module.symvers "${pkgdir}/usr/share/doc/linux-custom/Module.symvers"
+}

@@ -1,0 +1,25 @@
+# Maintainer: Custom Kernel Builder
+pkgname=linux-custom-headers
+pkgver=7.2.9
+pkgrel=1
+pkgdesc="Headers for custom Linux kernel 7.2.9"
+arch=('x86_64')
+url="https://github.com/yourusername/kernel"
+license=('GPL2')
+
+package() {
+    _kernver="${pkgver}"
+
+    cd "${srcdir}/linux-${pkgver}"
+
+    mkdir -p "${pkgdir}/usr/lib/modules/${_kernver}/build"
+
+    make INSTALL_HDR_PATH="${pkgdir}/usr/lib/modules/${_kernver}/build" headers_install
+
+    cp -r include "${pkgdir}/usr/lib/modules/${_kernver}/build/"
+    cp -r arch/x86/include "${pkgdir}/usr/lib/modules/${_kernver}/build/arch/x86/"
+    cp Makefile "${pkgdir}/usr/lib/modules/${_kernver}/build/"
+    cp Kconfig "${pkgdir}/usr/lib/modules/${_kernver}/build/" 2>/dev/null || true
+    cp .config "${pkgdir}/usr/lib/modules/${_kernver}/build/"
+    cp Module.symvers "${pkgdir}/usr/lib/modules/${_kernver}/build/" 2>/dev/null || true
+}
